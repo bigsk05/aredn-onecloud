@@ -1,0 +1,166 @@
+name: Build AREDN for OneCloud
+run-name: AREDN OneCloud ${{ inputs.aredn_tag }} (${{ inputs.network_mode }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      aredn_tag:
+        description: Official AREDN release tag to adapt, or latest
+        type: string
+        default: latest
+      network_mode:
+        description: standard keeps LAN untagged; rpi-trunk reuses the Pi VLAN layout
+        type: choice
+        options: [standard, rpi-trunk]
+        default: standard
+      publish:
+        description: Publish the images as a GitHub prerelease
+        type: boolean
+        default: false
+
+concurrency:
+  group: onecloud-build
+  cancel-in-progress: false
+
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install image verification tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            android-sdk-libsparse-utils device-tree-compiler dosfstools e2fsprogs \
+            golang-go mtools python3 u-boot-tools
+      - name: Build the packer and verify the OneCloud U-Boot template
+        run: python3 scripts/bootloader.py "$RUNNER_TEMP/onecloud-bootloader"
+      - name: Check images, network defaults and console drivers
+        env:
+          ONECLOUD_BOOTLOADER_DIR: ${{ runner.temp }}/onecloud-bootloader
+        run: |
+          bash -n scripts/build.sh
+          python3 -m unittest discover -s tests -v
+
+  build:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+    env:
+      ONECLOUD_DL_DIR: ${{ github.workspace }}/.build/downloads
+      ONECLOUD_CCACHE_DIR: ${{ github.workspace }}/.build/ccache
+      CCACHE_MAXSIZE: 2G
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare the runner
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            android-sdk-libsparse-utils build-essential bison ccache clang cmake \
+            curl device-tree-compiler dosfstools e2fsprogs file flex gawk \
+            gcc-multilib gettext git golang-go libelf-dev libjson-c-dev \
+            libncurses-dev libssl-dev mtools ninja-build openssl pkgconf python3 \
+            python3-dev python3-pyelftools python3-setuptools quilt rsync swig \
+            u-boot-tools unzip util-linux wget xz-utils zlib1g-dev
+          mkdir -p .build
+          df -h .
+      - uses: actions/cache@v4
+        with:
+          path: .build/downloads
+          key: onecloud-dl-${{ inputs.aredn_tag }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            onecloud-dl-${{ inputs.aredn_tag }}-
+            onecloud-dl-
+      - uses: actions/cache@v4
+        with:
+          path: .build/ccache
+          key: onecloud-ccache-${{ hashFiles('onecloud/config', 'onecloud/target/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            onecloud-ccache-${{ hashFiles('onecloud/config', 'onecloud/target/**') }}-
+      - name: Check out the selected official AREDN release
+        id: prepare
+        run: |
+          set -o pipefail
+          python3 scripts/prepare.py "$GITHUB_WORKSPACE/.build/source" \
+            --aredn-tag "${{ inputs.aredn_tag }}" --network-mode "${{ inputs.network_mode }}" \
+            2>&1 | tee .build/prepare.log
+      - name: Compile the S805 kernel, drivers and AREDN system
+        run: |
+          set -o pipefail
+          bash scripts/build.sh "$GITHUB_WORKSPACE/.build/source" 2>&1 | tee .build/build.log
+      - name: Verify the APK repository signature chain
+        env:
+          ONECLOUD_APK: ${{ github.workspace }}/.build/source/openwrt/staging_dir/host/bin/apk
+        run: python3 -m unittest discover -s tests -p test_repositories.py -v
+      - name: Build the packer and verify the matching U-Boot
+        run: |
+          set -o pipefail
+          python3 scripts/bootloader.py "$GITHUB_WORKSPACE/.build/bootloader" 2>&1 | tee .build/bootloader.log
+      - name: Create and verify the USB/SD and eMMC images
+        run: |
+          set -o pipefail
+          python3 scripts/artifacts.py "$GITHUB_WORKSPACE/.build/source" \
+            "$GITHUB_WORKSPACE/.build/bootloader" "$GITHUB_WORKSPACE/artifacts" \
+            2>&1 | tee .build/packaging.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aredn-${{ steps.prepare.outputs.version }}
+          path: artifacts/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - name: Save build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onecloud-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .build/*.log
+            .build/source/onecloud-build.json
+            .build/source/openwrt/logs/**
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+
+  publish:
+    if: inputs.publish
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FW_VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: aredn-${{ needs.build.outputs.version }}
+          path: artifacts
+      - name: Publish the prerelease
+        run: |
+          (cd artifacts && sha256sum -c sha256sums)
+          if git ls-remote --tags origin "refs/tags/aredn-$FW_VERSION" | grep -q .; then
+            echo "Release aredn-$FW_VERSION already exists; refusing to replace it." >&2
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          plan = json.loads(Path('artifacts/source.json').read_text())
+          Path('release-notes.md').write_text(
+              f"Native AREDN for the OneCloud S805, built from AREDN {plan['sources']['aredn']['tag']}.\n\n"
+              f"Network mode: {plan['network_mode']}. HDMI console at up to 1080p.\n\n"
+              "Read FLASHING.txt and the repository README before flashing.\n"
+          )
+          PY
+          gh release create "aredn-$FW_VERSION" artifacts/* --target "$GITHUB_SHA" \
+            --title "AREDN $FW_VERSION" --notes-file release-notes.md --prerelease

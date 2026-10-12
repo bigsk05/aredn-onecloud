@@ -1,0 +1,24 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Derive a stable local MAC from the soldered eMMC CID. AREDN derives node
+# addresses from MAC addresses; a new random address on each boot is unsuitable.
+onecloud_mac() {
+    case "$(cat /tmp/sysinfo/board_name 2>/dev/null)" in
+        thunder,onecloud|xunlei,onecloud) ;;
+        *) return 0 ;;
+    esac
+    local device cid digest mac
+    for device in /sys/bus/mmc/devices/*; do
+        [ "$(cat "$device/type" 2>/dev/null)" = "MMC" ] || continue
+        cid=$(cat "$device/cid" 2>/dev/null)
+        [ "${#cid}" = 32 ] || continue
+        case "$cid" in *[!0-9a-fA-F]*) continue ;; esac
+        digest=$(printf '%s' "$cid" | sha256sum)
+        mac=$(printf '%.10s' "$digest" | sed 's/../:&/g')
+        ip link set dev eth0 down
+        ip link set dev eth0 address "02$mac"
+        return 0
+    done
+    echo 'OneCloud: eMMC CID unavailable; check the Ethernet MAC before joining a mesh' >&2
+}
+boot_hook_add preinit_main onecloud_mac

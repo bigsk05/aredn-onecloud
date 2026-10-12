@@ -1,0 +1,38 @@
+{
+  "project": {
+    "issues": "https://github.com/bigsk05/aredn-onecloud/issues"
+  },
+  "aredn": {
+    "url": "https://github.com/aredn/aredn.git",
+    "tested": [
+      "4.26.7.0"
+    ]
+  },
+  "board_support": {
+    "url": "https://github.com/lxhao61/OneCloud-OpenWrt",
+    "commit": "6202bb5ac3ab3dcea00faea079e64532776cacd3",
+    "path": "target/linux/amlogic"
+  },
+  "display_patches": {
+    "url": "https://github.com/armbian/build",
+    "ref": "v25.8.1",
+    "path": "patch/kernel/archive/meson-6.12",
+    "vendored_as": "onecloud/target/patches-6.12/910-933",
+    "modifications": "Refreshed for Linux 6.12.94. 923 and 928 use Hz instead of kHz, matching commit 1017560164b6, in stable since 6.12.34."
+  },
+  "amlimg": {
+    "url": "https://github.com/hzyitc/AmlImg.git",
+    "commit": "5ede4ed30b27c10187af5258f7e2f61f9ad71e1e"
+  },
+  "uboot": {
+    "url": "https://github.com/hzyitc/u-boot/releases/download/build-20221028-0940/eMMC.burn.img",
+    "sha256": "d33d979d23b8a607447c5af424b1e24003820e7e159e540c7f47c89d45cdc491",
+    "source_url": "https://github.com/hzyitc/u-boot",
+    "source_commit": "0038d741ed1c77a77570c3a6bf88fe6189c11733",
+    "emmc_signature": "00002ceb",
+    "boot_start": 32768,
+    "boot_sectors": 524288,
+    "root_start": 557056,
+    "root_sectors": 14712832
+  }
+}

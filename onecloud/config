@@ -1,0 +1,31 @@
+# S805 is a 32-bit Cortex-A5. This is a board target, not armsr/EFI.
+CONFIG_TARGET_amlogic=y
+CONFIG_TARGET_amlogic_meson8b=y
+CONFIG_TARGET_ALL_PROFILES=y
+CONFIG_TARGET_ROOTFS_EXT4FS=y
+# CONFIG_TARGET_ROOTFS_SQUASHFS is not set
+# CONFIG_TARGET_ROOTFS_INITRAMFS is not set
+# CONFIG_TARGET_ROOTFS_CPIOGZ is not set
+# CONFIG_TARGET_ROOTFS_TARGZ is not set
+CONFIG_TARGET_KERNEL_PARTSIZE=256
+CONFIG_TARGET_ROOTFS_PARTSIZE=256
+CONFIG_TARGET_EXT4_BLOCKSIZE=4096
+CONFIG_TARGET_EXT4_RESERVED_PCT=0
+CONFIG_TARGET_IMAGES_GZIP=y
+CONFIG_DEVEL=y
+CONFIG_CCACHE=y
+CONFIG_AUTOREMOVE=y
+CONFIG_SIGNED_PACKAGES=y
+CONFIG_BUSYBOX_CONFIG_SHA256SUM=y
+CONFIG_PACKAGE_blkid=y
+CONFIG_PACKAGE_partx-utils=y
+CONFIG_PACKAGE_e2fsprogs=y
+CONFIG_PACKAGE_resize2fs=y
+CONFIG_PACKAGE_kmod-fs-vfat=y
+# The storage and Ethernet drivers needed before mounting root are built in
+# by target/meson8b/config-6.12. Optional USB NICs can be installed later.
+CONFIG_PACKAGE_kmod-usb-net-rtl8152=m
+# CONFIG_PACKAGE_qemu-ga is not set
+# CONFIG_PACKAGE_ffmpeg is not set
+# CONFIG_PACKAGE_libx264 is not set
+CONFIG_VERSION_REPO="/opt/aredn-packages"

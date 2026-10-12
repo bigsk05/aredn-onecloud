@@ -1,0 +1,10 @@
+.work/
+.build/
+artifacts/
+__pycache__/
+*.pyc
+*.img
+*.img.gz
+*.img.xz
+*.qcow2
+*.deb

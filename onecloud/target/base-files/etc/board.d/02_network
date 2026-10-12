@@ -1,0 +1,24 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+. /lib/functions/uci-defaults.sh
+. /lib/functions.sh
+
+board_config_update
+case "$(board_name)" in
+thunder,onecloud|xunlei,onecloud)
+    case "$(cat /etc/onecloud-network-mode)" in
+        standard)
+            ucidef_set_interfaces_lan_wan "eth0" "eth0.1"
+            ;;
+        rpi-trunk)
+            ucidef_set_interfaces_lan_wan "eth0.3" "eth0.4"
+            ;;
+        *)
+            echo 'Invalid OneCloud network mode' >&2
+            exit 1
+            ;;
+    esac
+    ucidef_set_interface "dtdlink" device "eth0.2" protocol "static"
+    ;;
+esac
+board_config_flush
